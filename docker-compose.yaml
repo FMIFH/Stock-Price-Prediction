@@ -1,0 +1,144 @@
+services:
+  kafka:
+      image: confluentinc/cp-kafka:7.5.0
+      container_name: kafka
+      ports:
+        - "9092:9092"
+        - "29092:29092"
+      environment:
+        KAFKA_NODE_ID: 1
+        KAFKA_PROCESS_ROLES: 'broker,controller'
+        KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+        KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:29093,PLAINTEXT_HOST://0.0.0.0:9092'
+        KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+        KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+        KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+        CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      healthcheck:
+        test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:29092 --version || exit 1"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: featurestore
+      POSTGRES_PASSWORD: featurestore123
+      POSTGRES_DB: features
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U featurestore -d features || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  db-init:
+    build: .
+    container_name: db-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: featurestore
+      POSTGRES_PASSWORD: featurestore123
+      POSTGRES_DB: features
+      PYTHONPATH: /app/src
+    command: python ./src/services/database_service.py
+    restart: "no"
+
+  producer-aapl:
+    build: .
+    container_name: producer-aapl
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      STOCK_SYMBOL: AAPL
+      KAFKA_TOPIC: stock_data
+      KAFKA_BROKER: kafka:29092
+    command: python ./src/producer.py
+
+  producer-googl:
+    build: .
+    container_name: producer-googl
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      STOCK_SYMBOL: GOOGL
+      KAFKA_TOPIC: stock_data
+      KAFKA_BROKER: kafka:29092
+    command: python ./src/producer.py
+
+  producer-msft:
+    build: .
+    container_name: producer-msft
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      STOCK_SYMBOL: MSFT
+      KAFKA_TOPIC: stock_data
+      KAFKA_BROKER: kafka:29092
+    command: python ./src/producer.py
+
+  consumer:
+    build: .
+    container_name: consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_TOPIC: stock_data
+      KAFKA_BROKER: kafka:29092
+      CONSUMER_GROUP_ID: stock_consumer_group
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: featurestore
+      POSTGRES_PASSWORD: featurestore123
+      POSTGRES_DB: features
+    volumes:
+      - ./data:/app/data
+    command: python ./src/consumer.py
+
+volumes:
+  redis-data:
+  postgres-data:

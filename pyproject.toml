@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "stock-price-prediction"
+version = "0.1.0"
+description = ""
+authors = ["Francisco Henriques <48632339+FMIFH@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+kafka-python = "^2.3.0"
+yfinance = "^1.0"
+pandas = "^2.0"
+numpy = "^1.24"
+redis = "^5.0"
+psycopg2-binary = "^2.9"
+sqlalchemy = "^2.0.46"
+pydantic = "^2.12.5"
+pydantic-settings = "^2.12.0"
+streamlit = "^1.53.0"
+plotly = "^6.5.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
